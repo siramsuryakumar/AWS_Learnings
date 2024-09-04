@@ -1,0 +1,39 @@
+import boto3
+from datetime import datetime
+
+def lambda_handler(event, context):
+    # Initialize S3 and Glue clients
+    s3_client = boto3.client('s3')
+    glue_client = boto3.client('glue')
+
+    # Extract the bucket and object key from the event
+    bucket_name = event['Records'][0]['s3']['bucket']['name']
+    object_key = event['Records'][0]['s3']['object']['key']
+
+    # Define bucket paths and file names
+    bucket_1 = 'raw-layer/transaction-data/treasury-deal/'
+    bucket_2 = 'raw-layer/transaction-data/trade-finance/'
+    
+    # Today's date in desired format (e.g., YYYY-MM-DD)
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    
+    # Determine which bucket triggered the event and set the corresponding file to check
+    if bucket_name.endswith(bucket_1.strip('/')):
+        find_bucket = 'raw-layer/transaction-data/trade-finance'
+        find_file = f'{find_bucket}/{today_date}_tf.txt'
+    else:
+        find_bucket = 'raw-layer/transaction-data/treasury-deal'
+        find_file = f'{find_bucket}/{today_date}_td.txt'
+
+    # Check if the corresponding file exists in the other bucket
+    try:
+        s3_client.head_object(Bucket='your-s3-bucket', Key=find_file)
+        print(f"File {find_file} exists in {find_bucket}. Both files are available.")
+
+        # Trigger AWS Glue job since both files are available
+        response = glue_client.start_job_run(JobName='your-glue-job-name')
+        print(f"Glue job triggered successfully: {response['JobRunId']}")
+
+    except s3_client.exceptions.ClientError as e:
+        # File not found, so exit and wait for the other file to arrive
+        print(f"File {find_file} not found in {find_bucket}. Waiting for the other file.")
